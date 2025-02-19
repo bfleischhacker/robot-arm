@@ -21,12 +21,12 @@ UNIT_VEC = Vector(1, 1, 1)
 m3 = fastener.ButtonHeadScrew(size="M3-0.5", length=3)
 
 importer = Mesher()
-servo_wheel_hole_radius = m3.thread_diameter * 1.05 / 2
-servo_mount_hole_radius = 1.3 * 1.05 / 2
+servo_wheel_hole_radius = 1.25
+servo_mount_hole_radius = .8
 guide_axle_mount_radius = 3.02
 motor_axle_mount_radius = 1.6
 wheel_radius = 9.0
-carriage_mount_hole_rad = 0.8
+carriage_mount_hole_rad = 1.2
 
 
 @dataclass
@@ -92,7 +92,7 @@ def get_descendant(compound: Compound, label: str):
 
 
 def build_servo():
-    st3215 = import_step("resources/ST3215-simplified.step")
+    st3215 = import_step("resources/ST3215-simplified.step").locate(Location(Plane.XY, (0, 0, 0)))
     st3215.label = "st3215"
     drive_wheel: Solid = None
     guide_wheel: Solid = None
@@ -133,102 +133,120 @@ def build_servo():
             for i, l in enumerate(locs):
                 RigidJoint(f"mount_{i}", to_part=guide_wheel, joint_location=l)
 
-    jp = Plane.XY.rotated(Vector(Z=180))
+    guide_jp = Plane.XY.rotated((180, 0, 0))
+    motor_jp = Plane.XY.rotated((0, 0, 0))
+
     # mount joints
     RigidJoint(
-        label="guide_ne_mount",
+        label="guide_mount_ne",
         to_part=housing,
-        joint_location=Location(jp, (-18.2 + 1, 10.25, 25.6)),
+        joint_location=Location(guide_jp, (-18.2 + 1, 10.25, 25.6)),
     )
     RigidJoint(
-        label="guide_nw_mount",
+        label="guide_mount_nw",
         to_part=housing,
-        joint_location=Location(jp, (-18.2 + 1, -10.25, 25.6)),
+        joint_location=Location(guide_jp, (-18.2 + 1, -10.25, 25.6)),
     )
     RigidJoint(
-        label="guide_se_mount",
+        label="guide_mount_se",
         to_part=housing,
-        joint_location=Location(jp, (6.25 + 1, 10.25, 25.6)),
+        joint_location=Location(guide_jp, (6.25 + 1, 10.25, 25.6)),
     )
     RigidJoint(
-        label="guide_sw_mount",
+        label="guide_mount_sw",
         to_part=housing,
-        joint_location=Location(jp, (6.25 + 1, -10.25, 25.6)),
+        joint_location=Location(guide_jp, (6.25 + 1, -10.25, 25.6)),
     )
 
     RigidJoint(
-        label="drive_nw_mount",
+        label="motor_mount_nw",
         to_part=housing,
-        joint_location=Location(jp, (-18.2 + 1, 10.25, -6.4)),
+        joint_location=Location(motor_jp, (-18.2 + 1, 10.25, -6.4)),
     )
     RigidJoint(
-        label="drive_ne_mount",
+        label="motor_mount_ne",
         to_part=housing,
-        joint_location=Location(jp, (-18.2 + 1, -10.25, -6.4)),
+        joint_location=Location(motor_jp, (-18.2 + 1, -10.25, -6.4)),
     )
     RigidJoint(
-        label="drive_sw_mount",
+        label="motor_mount_sw",
         to_part=housing,
-        joint_location=Location(jp, (3.5, 10.25, -6.4)),
+        joint_location=Location(motor_jp, (3.5, 10.25, -6.4)),
     )
     RigidJoint(
-        label="drive_se_mount",
+        label="motor_mount_se",
         to_part=housing,
-        joint_location=Location(jp, (3.5, -10.25, -6.4)),
+        joint_location=Location(motor_jp, (3.5, -10.25, -6.4)),
     )
 
     return st3215
 
 
-def build_carriage(housing: Shape, tol: float, thickness: float):
+def build_carriage(tol: float, thickness: float):
+    thickness 
     guide_bump_sy = 18.2
-    servo_size = Vector(32, 24.62, 45.12)
-    height_cut = Vector(0, 0, 23)
-    carriage_size = servo_size - height_cut + Vector(1, 1, 1) * thickness * 2
     motor_cut_top_z = 1.55
     motor_cut_bot_z = -17.2
     motor_cut_sz = motor_cut_top_z - motor_cut_bot_z
     motor_bump_sy = 13.92
     guide_bump_start_dist_from_bot = 5.27
 
-    motor_side_z = housing.faces().filter_by(Axis.Z).sort_by(Axis.Z)[3]
-    guide_side_z = housing.faces().filter_by(Axis.Z).sort_by(Axis.Z)[-5]
-    motor_left_y = housing.faces().filter_by(Axis.Y).sort_by(Axis.Y)[0]
+    bot_guide_mount_sz_from_bot = 2.31
+    bot_motor_mount_sz_from_bot = 6.06
+    top_mount_sz_from_bot = 26.76
+    mount_sy = 20.5
+    mount_sx_from_middle = 31.6
 
+    servo_size = Vector(32, 24.62, 45.12)
+    carriage_size = servo_size + Vector(2, 2, 2) * thickness
+    motor_mount_sz = top_mount_sz_from_bot - bot_motor_mount_sz_from_bot
+    guide_mount_sz = top_mount_sz_from_bot - bot_guide_mount_sz_from_bot
 
-    #   carriage = (
-    #     Workplane(origin=-height_cut / 2)
-    #     .box(*carriage_size)
-    #     .faces("+Z")
-    #     .shell(-wall_thickness, "intersection")
-    #     .faces('+X').faces('>X')
-    #     .workplane(origin=(0,0,motor_cut_bot_z + carriage_size.z / 2))
-    #     .rect(guide_bump_sy * tol, carriage_size.z)
-    #     .extrude(-wall_thickness, combine='s')
-    #     .faces('-X').faces('<X')
-    #     .workplane(origin=(0, 0, 0))
-    #     .rect(motor_bump_sy * tol, servo_size.z)
-    #     .extrude(-wall_thickness, combine='s')
-    # )
+    height_cut_z = 23
 
-    with BuildPart(Plane.XY) as part:
-        b = Box(*carriage_size)
+    hole_names = ['se', 'sw']
+
+    with BuildPart() as part:
+        Box(*carriage_size)
         topf = faces().sort_by(Axis.Z)[-1]
         offset(amount=-thickness, openings=topf)
-        motorf = faces(Select.LAST).sort_by(Axis.X)[-1]
-        with BuildSketch(motorf) as s:
-            Rectangle(motorf.width, guide_bump_sy * tol)
-        extrude(s.sketch, amount=-thickness, mode=Mode.SUBTRACT)
-        guidef = faces(Select.ALL).sort_by(Axis.X)[0]
-        with BuildSketch(guidef) as s:
-            Rectangle(guide_bump_sy, carriage_size.Z - guide_bump_start_dist_from_bot - thickness)
-        extrude(s.sketch, amount=-thickness, mode=Mode.SUBTRACT)
+        motorf = faces(Select.ALL).sort_by(Axis.X)[-1].moved(
+            Location((-thickness / 2, 0, 0))
+        )
+        # motor side holes
+        with BuildPart(motorf, mode=Mode.SUBTRACT):
+            with Locations(Location(Vector(X=-carriage_size.Z / 2 + thickness + bot_motor_mount_sz_from_bot))):
+                with GridLocations(0, mount_sy, 1, 2):
+                    Cylinder(servo_mount_hole_radius, thickness)
+                    hole = faces(Select.LAST).filter_by(GeomType.CYLINDER)
+                    with Locations(Location((0, 0, -thickness/2), (180, 0, -180))) as locs:
+                        for i, l in enumerate(locs):
+                            RigidJoint(f'motor_mount_{hole_names[i]}', part, l)
+            # motor side cutout
+            with Locations(Location((thickness / 2, 0, 0))):
+                Box(carriage_size.Z - thickness, motor_bump_sy * tol, thickness)
+        
+        guidef = faces(Select.ALL).sort_by(Axis.X)[0].moved(
+            Location((thickness / 2, 0, 0))
+        )
+        with BuildPart(guidef, mode=Mode.SUBTRACT):
+            with Locations(Location(Vector(X=-carriage_size.Z / 2 + thickness + bot_guide_mount_sz_from_bot))):
+                with GridLocations(0, mount_sy, 1, 2):
+                    Cylinder(servo_mount_hole_radius, thickness)
+                    hole = faces(Select.LAST).filter_by(GeomType.CYLINDER)
+                    with Locations(Location((0, 0, -thickness/2), (180, 0, -180))) as locs:
+                        for i, l in enumerate(locs):
+                            RigidJoint(f'guide_mount_{hole_names[i]}', part, l)
+            with Locations(Location((thickness / 2, 0, 0))):
+                Box(carriage_size.Z - thickness, guide_bump_sy * tol, thickness)
+                    
+        
+        # chop off top
+        with Locations(Location((0, 0, carriage_size.Z / 2 - height_cut_z / 2))):
+            Box(carriage_size.X, carriage_size.Y, height_cut_z, mode=Mode.SUBTRACT)
 
     
-    
-    # return part
-    # return housing.faces().filter_by(Axis.Z).sort_by(Axis.Z)[-5]
-    return housing.faces().filter_by(Plane.ZY)
+    return part
 
 
 def build_plate(length: float, thickness: float, wheel_dist: float):
@@ -368,8 +386,8 @@ def connect_servo_to_arm_mount(arm: Compound, servo: Compound):
     print("connecting", arm.label, "mount to", servo.label)
     aj = joint_dict(arm)
     sj = joint_dict(servo)
-    aj['carriage_guide_west'].connect_to(sj['housing.guide_sw_mount'])
-    aj['carriage_drive_west'].connect_to(sj['housing.drive_sw_mount'])
+    aj['carriage_guide_west'].connect_to(sj['housing.guide_mount_sw'])
+    aj['carriage_drive_west'].connect_to(sj['housing.motor_mount_sw'])
 
 
 def connect_wheels_to_housing(servo: Compound):
@@ -419,7 +437,10 @@ def build_test_arm():
 # show(build_servo(), render_joints=True)
 # show(build_full_arm(), render_joints=True)
 servo = build_servo()
-carriage = build_carriage(get_descendant(servo, 'housing'), 1.01, 2.5)
+carriage = build_carriage(1.01, 2.0)
+carriage.joints['motor_mount_se'].connect_to(get_descendant(servo, 'housing').joints['motor_mount_se'])
+carriage.joints['motor_mount_sw'].connect_to(get_descendant(servo, 'housing').joints['motor_mount_sw'])
 show(carriage, servo, render_joints=True)
 # export_step(build_limb().part, "limb.step")
 # show(build_test_arm(), render_joints=True)
+export_step(build_carriage(1.01, 2).part, 'carriage_test.step')
