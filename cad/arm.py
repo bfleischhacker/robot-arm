@@ -23,6 +23,10 @@ m3 = fastener.ButtonHeadScrew(size="M3-0.5", length=3)
 importer = Mesher()
 servo_wheel_hole_radius = m3.thread_diameter * 1.05 / 2
 servo_mount_hole_radius = 1.3 * 1.05 / 2
+guide_axle_mount_radius = 3.02
+motor_axle_mount_radius = 1.6
+wheel_radius = 9.0
+carriage_mount_hole_rad = 0.8
 
 
 @dataclass
@@ -129,140 +133,102 @@ def build_servo():
             for i, l in enumerate(locs):
                 RigidJoint(f"mount_{i}", to_part=guide_wheel, joint_location=l)
 
+    jp = Plane.XY.rotated(Vector(Z=180))
     # mount joints
     RigidJoint(
         label="guide_ne_mount",
         to_part=housing,
-        joint_location=Location(Plane.YX, (-18.2 + 1, 10.25, 25.6)),
+        joint_location=Location(jp, (-18.2 + 1, 10.25, 25.6)),
     )
     RigidJoint(
         label="guide_nw_mount",
         to_part=housing,
-        joint_location=Location(Plane.YX, (-18.2 + 1, -10.25, 25.6)),
+        joint_location=Location(jp, (-18.2 + 1, -10.25, 25.6)),
     )
     RigidJoint(
         label="guide_se_mount",
         to_part=housing,
-        joint_location=Location(Plane.YX, (6.25 + 1, 10.25, 25.6)),
+        joint_location=Location(jp, (6.25 + 1, 10.25, 25.6)),
     )
     RigidJoint(
         label="guide_sw_mount",
         to_part=housing,
-        joint_location=Location(Plane.YX, (6.25 + 1, -10.25, 25.6)),
+        joint_location=Location(jp, (6.25 + 1, -10.25, 25.6)),
     )
 
     RigidJoint(
         label="drive_nw_mount",
         to_part=housing,
-        joint_location=Location(Plane.XY, (-18.2 + 1, 10.25, -6.4)),
+        joint_location=Location(jp, (-18.2 + 1, 10.25, -6.4)),
     )
     RigidJoint(
         label="drive_ne_mount",
         to_part=housing,
-        joint_location=Location(Plane.XY, (-18.2 + 1, -10.25, -6.4)),
+        joint_location=Location(jp, (-18.2 + 1, -10.25, -6.4)),
     )
     RigidJoint(
         label="drive_sw_mount",
         to_part=housing,
-        joint_location=Location(Plane.XY, (3.5, 10.25, -6.4)),
+        joint_location=Location(jp, (3.5, 10.25, -6.4)),
     )
     RigidJoint(
         label="drive_se_mount",
         to_part=housing,
-        joint_location=Location(Plane.XY, (3.5, -10.25, -6.4)),
+        joint_location=Location(jp, (3.5, -10.25, -6.4)),
     )
 
     return st3215
 
 
-def build_carriage(tol: float, thickness: float):
-    with BuildPart() as part:
-        carriage_bottom = 9.56
-        carriage_top = -22.04
-        carriage_left = -12.31
-        carriage_right = 12.31
+def build_carriage(housing: Shape, tol: float, thickness: float):
+    guide_bump_sy = 18.2
+    servo_size = Vector(32, 24.62, 45.12)
+    height_cut = Vector(0, 0, 23)
+    carriage_size = servo_size - height_cut + Vector(1, 1, 1) * thickness * 2
+    motor_cut_top_z = 1.55
+    motor_cut_bot_z = -17.2
+    motor_cut_sz = motor_cut_top_z - motor_cut_bot_z
+    motor_bump_sy = 13.92
+    guide_bump_start_dist_from_bot = 5.27
 
-        carriage_guide_side = 25.6
-        carriage_drive_side = -6.4
-        carriage_size_z = carriage_guide_side - carriage_drive_side
+    motor_side_z = housing.faces().filter_by(Axis.Z).sort_by(Axis.Z)[3]
+    guide_side_z = housing.faces().filter_by(Axis.Z).sort_by(Axis.Z)[-5]
+    motor_left_y = housing.faces().filter_by(Axis.Y).sort_by(Axis.Y)[0]
 
-        def abs_box(x, x2, y, y2, z, z2, mode: Mode = Mode.SUBTRACT):
-            sx = x2 - x
-            sy = y2 - y
-            sz = z2 - z
-            with Locations(Location((x + sx / 2, y + sy / 2, z + sz / 2))):
-                Box(abs(sx), abs(sy), abs(sz), mode=mode)
 
-        def abs_hollow_box(x, x2, y, y2, z, z2, thickness=3, tol=tol):
-            abs_box(
-                x + thickness + tol,
-                x2 - thickness - tol,
-                y - thickness - tol,
-                y2 + thickness + tol,
-                z + thickness + tol,
-                z2 - thickness - tol,
-                mode=Mode.ADD,
-            )
-            abs_box(x + tol, x2 - tol, y - tol, y2 + tol, z + tol, z2 - tol)
+    #   carriage = (
+    #     Workplane(origin=-height_cut / 2)
+    #     .box(*carriage_size)
+    #     .faces("+Z")
+    #     .shell(-wall_thickness, "intersection")
+    #     .faces('+X').faces('>X')
+    #     .workplane(origin=(0,0,motor_cut_bot_z + carriage_size.z / 2))
+    #     .rect(guide_bump_sy * tol, carriage_size.z)
+    #     .extrude(-wall_thickness, combine='s')
+    #     .faces('-X').faces('<X')
+    #     .workplane(origin=(0, 0, 0))
+    #     .rect(motor_bump_sy * tol, servo_size.z)
+    #     .extrude(-wall_thickness, combine='s')
+    # )
 
-        def abs_hole(x, y, z, r, d, mode: Mode = Mode.SUBTRACT):
-            with Locations(Location((x, y, z - d / 2))):
-                Hole(r, d / 2, mode=mode)
+    with BuildPart(Plane.XY) as part:
+        b = Box(*carriage_size)
+        topf = faces().sort_by(Axis.Z)[-1]
+        offset(amount=-thickness, openings=topf)
+        motorf = faces(Select.LAST).sort_by(Axis.X)[-1]
+        with BuildSketch(motorf) as s:
+            Rectangle(motorf.width, guide_bump_sy * tol)
+        extrude(s.sketch, amount=-thickness, mode=Mode.SUBTRACT)
+        guidef = faces(Select.ALL).sort_by(Axis.X)[0]
+        with BuildSketch(guidef) as s:
+            Rectangle(guide_bump_sy, carriage_size.Z - guide_bump_start_dist_from_bot - thickness)
+        extrude(s.sketch, amount=-thickness, mode=Mode.SUBTRACT)
 
-        def abs_step_hole(x, y, z, r, d, step=1, mode: Mode = Mode.SUBTRACT):
-            abs_hole(x, y, z - step, r, d - step, mode)
-            abs_hole(x, y, z, r * 1.5, step, mode)
-
-        abs_hollow_box(
-            carriage_bottom,
-            carriage_top,
-            carriage_left,
-            carriage_right,
-            carriage_guide_side,
-            carriage_drive_side,
-            thickness,
-        )
-        abs_box(
-            carriage_top + thickness + tol,
-            carriage_top - thickness - tol,
-            carriage_left - thickness - tol,
-            carriage_right + thickness + tol,
-            carriage_guide_side + thickness + tol,
-            carriage_drive_side - thickness - tol,
-            mode=Mode.SUBTRACT,
-        )
-        abs_box(4, -25, -9.15, 9.15, 27.5 + thickness + tol, carriage_drive_side)
-
-        abs_step_hole(-17.2, 10.25, 25.6 + thickness + tol, 0.8, thickness)
-        abs_step_hole(-17.2, -10.25, 25.6 + thickness + tol, 0.8, thickness)
-        abs_step_hole(7.25, -10.25, 25.6 + thickness + tol, 0.8, thickness)
-        abs_step_hole(7.25, 10.25, 25.6 + thickness + tol, 0.8, thickness)
-
-        with Locations(Plane.XY.reverse()):
-            # flip y and z signs
-            abs_step_hole(-17.2, 10.25, 6.4 + thickness + tol, 0.8, thickness)
-            abs_step_hole(-17.2, -10.25, 6.4 + thickness + tol, 0.8, thickness)
-            abs_step_hole(3.5, 10.25, 6.4 + thickness + tol, 0.8, thickness)
-            abs_step_hole(3.5, -10.25, 6.4 + thickness + tol, 0.8, thickness)
-
-            abs_box(
-                8.5,
-                carriage_top,
-                -6.96,
-                6.96,
-                -carriage_drive_side + tol,
-                -carriage_drive_side + thickness + tol,
-            )
-
-        abs_hole(
-            -25.39,
-            0,
-            carriage_guide_side + thickness + tol,
-            11,
-            carriage_size_z + (thickness + tol) * 2,
-        )
-
-        return part
+    
+    
+    # return part
+    # return housing.faces().filter_by(Axis.Z).sort_by(Axis.Z)[-5]
+    return housing.faces().filter_by(Plane.ZY)
 
 
 def build_plate(length: float, thickness: float, wheel_dist: float):
@@ -370,7 +336,7 @@ def build_limb(
         if mirrored:
             RigidJoint(
                 label="carriage_guide_west",
-                joint_location=Location((-6.53, 10.25, -8.05 + .8), Vector(Y=90)),
+                joint_location=Location((-6.53, 10.25, -8.05 + .8), Vector(Y=90, Z=180)),
             )
             RigidJoint(
                 label="carriage_drive_west",
@@ -379,7 +345,7 @@ def build_limb(
         else:
             RigidJoint(
                 label="carriage_drive_west",
-                joint_location=Location((-6.53, 10.25, -4.3 + .8), Vector(Y=90)),
+                joint_location=Location((-6.53, 10.25, -4.3 + .8), Vector(Y=90, Z=180)),
             )
             RigidJoint(
                 label="carriage_guide_west",
@@ -396,17 +362,14 @@ def connect_arm_to_servo_wheel(arm: Compound, servo: Compound):
     for i in range(4):
         sj[f"guide_wheel.mount_{i}"].connect_to(aj[f"l_arm_mount_{i}"])
         sj[f"drive_wheel.mount_{i}"].connect_to(aj[f"r_arm_mount_{i}"])
-        aj[f"rl_arm_mount"]
 
 
 def connect_servo_to_arm_mount(arm: Compound, servo: Compound):
     print("connecting", arm.label, "mount to", servo.label)
     aj = joint_dict(arm)
     sj = joint_dict(servo)
-    # aj["carriage_guide_west"].connect_to(sj["housing.guide_sw_mount"])
-    # aj["carriage_drive_west"].connect_to(sj["housing.drive_sw_mount"])
-    sj["housing.guide_sw_mount"].connect_to(aj["carriage_guide_west"])
-    sj["housing.drive_sw_mount"].connect_to(aj["carriage_drive_west"])
+    aj['carriage_guide_west'].connect_to(sj['housing.guide_sw_mount'])
+    aj['carriage_drive_west'].connect_to(sj['housing.drive_sw_mount'])
 
 
 def connect_wheels_to_housing(servo: Compound):
@@ -422,23 +385,41 @@ def build_full_arm():
         servos.append(copy.copy(servos[0]))
         servos[i].label = f"servo_{i}"
     bicep = build_limb(carriage_offset=6).part
-    bicep.label = "bi"
+    bicep.label = "bicep"
     forearm = build_limb(carriage_offset=6, mirrored=True).part
     forearm.label = "forearm"
-    # connect_wheels_to_housing(servos[0])
-    # connect_arm_to_servo_wheel(bicep, servos[0])
-    # connect_servo_to_arm_mount(bicep, servos[1])
-    # connect_wheels_to_housing(servos[1])
-    # connect_arm_to_servo_wheel(forearm, servos[1])
-    # connect_servo_to_arm_mount(forearm, servos[2])
-    # connect_wheels_to_housing(servos[2])
+    connect_wheels_to_housing(servos[0])
+    connect_arm_to_servo_wheel(bicep, servos[0])
+    connect_servo_to_arm_mount(bicep, servos[1])
+    connect_wheels_to_housing(servos[1])
+    connect_arm_to_servo_wheel(forearm, servos[1])
+    connect_servo_to_arm_mount(forearm, servos[2])
+    connect_wheels_to_housing(servos[2])
     export_step(bicep, "bicep.step")
     export_step(forearm, "forearm.step")
-    return Compound(label="arm", children=[bicep, servos[0], servos[1]])
+    return Compound(label="arm", children=[bicep, forearm] + servos)
+
+def build_test_arm():
+    servo = build_servo()
+    servo.label = 'servo'
+    servo2 = copy.copy(servo)
+    servo2.label = 'servo2'
+    limb = build_limb(mirrored=True).part
+    limb.label = 'limb'
+    connect_arm_to_servo_wheel(limb, servo)
+    connect_wheels_to_housing(servo)
+    connect_servo_to_arm_mount(limb, servo2)
+    # connect_wheels_to_housing(servo2)
+    return Compound(label='bicep', children=[servo, servo2, limb])
+
+
 
 
 # arm = build_full_arm()
 # show(build_servo(), render_joints=True)
 # show(build_full_arm(), render_joints=True)
+servo = build_servo()
+carriage = build_carriage(get_descendant(servo, 'housing'), 1.01, 2.5)
+show(carriage, servo, render_joints=True)
 # export_step(build_limb().part, "limb.step")
-show(build_limb(mirrored=True), render_joints=True)
+# show(build_test_arm(), render_joints=True)
