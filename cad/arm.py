@@ -27,7 +27,8 @@ servo_mount_hole_radius = .8
 guide_axle_mount_radius = 3.02
 motor_axle_mount_radius = 1.6
 wheel_radius = 9.0
-carriage_mount_hole_rad = 1.2
+carriage_mount_hole_rad = .8
+carriage_mount_hole_head_rad = 1.2
 wheel_mount_hole_rad_from_center = 7
 
 
@@ -261,26 +262,13 @@ def build_wheel_arm(length: float, thickness: float, axle_radius: float):
                 Hole(servo_wheel_hole_radius, thickness)
                 for i,l in enumerate(locs):
                     RigidJoint(label=f'left_wheel_mount_{i}', to_part=arm, joint_location=l)
-        joinf = faces(Select.ALL).sort_by(Axis.X)[0]
-        RigidJoint(label='join', joint_location=joinf.location)
+
     return arm
-
-def build_motor_mount_arm(length: float, thickness: float, mount_sy: float, mount_sz: float):
-    with BuildPart() as arm:
-        b = Box(length, wheel_radius * 2, thickness)
-        with Locations(Location((length/2-wheel_radius, 0, 0))):
-            RigidJoint(label=f'left_wheel_mount_{i}', to_part=arm, joint_location=l)
-        joinf = faces(Select.ALL).sort_by(Axis.X)[0]
-        RigidJoint(label='join', joint_location=joinf.location)
-
 
 def build_bicep(
     length: float = 150,
     thickness: float = 2.5,
     tol: float = 1.01,
-    wheel_dist: float = 0,
-    carriage_offset: float = 0,
-    mirrored: bool = False,
 ):
     with BuildPart() as bicep:
         carriage = build_carriage(tol, thickness)
@@ -300,18 +288,22 @@ def build_bicep(
             y = -length / 2 + motorf.bounding_box().size.Y / 2
             with Locations(Location((x, y, thickness / 2), Vector(Z=-90))) as loc:
                 add(motor_arm)
-            with Locations(faces(Select.ALL).filter_by(GeomType.CYLINDER).sort_by(Axis.X)[0].location):
-                Box(10, 10, 10)
-                Hole(carriage_mount_hole_rad, thickness)
-
+        with Locations([bicep.joints['motor_mount_sw'].location, bicep.joints['motor_mount_se'].location]):
+            with Locations(Location((0, 0, -thickness * 1.5))):
+                Hole(carriage_mount_hole_head_rad, thickness / 2)
         with BuildPart(guidef):
             x = -(guidef.center().Z - botz)+wheel_radius
             y = length / 2 - guidef.bounding_box().size.Y / 2
             with Locations(Location((x, y, thickness / 2), Vector(Z=90))):
                 add(guide_arm)
-        for i, h in enumerate(faces(Select.ALL).filter_by(GeomType.CYLINDER).sort_by(Axis.Y)[-4:-1]):
-            RigidJoint(label=f'guide_wheel_mount_{i}', to_part=bicep, joint_location=h.location)
-            
+        with Locations([bicep.joints['guide_mount_sw'].location, bicep.joints['guide_mount_se'].location]):
+            with Locations(Location((0, 0, -thickness * 1.5))):
+                Hole(carriage_mount_hole_head_rad, thickness / 2)
+        cross_barf = faces(Select.ALL).filter_by(Axis.Y).sort_by(Axis.Y)[-3]
+        with BuildPart(cross_barf):
+            with Locations(Location((-cross_barf.length / 2 + wheel_radius, 0, (length - motorf.width)/2))):
+                r = Box(wheel_radius * 2, cross_barf.width, thickness)
+
     return bicep
     
 def connect_arm_to_servo_wheel(arm: Compound, servo: Compound):
@@ -389,3 +381,4 @@ show(limb, servo, render_joints=True)
 # export_step(build_limb().part, "limb.step")
 # show(build_test_arm(), render_joints=True)
 # export_step(build_carriage(1.01, 2).part, 'carriage_test.step')
+export_step(limb, 'limb.step')
