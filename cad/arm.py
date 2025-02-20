@@ -14,6 +14,7 @@ import copy
 from dataclasses import dataclass
 from typing import Self, Iterator
 from anytree import Node
+from enum import Enum, auto
 
 UNIT_VEC = Vector(1, 1, 1)
 
@@ -249,32 +250,28 @@ def build_carriage(tol: float, thickness: float):
     
     return part
 
-
-def build_plate(length: float, thickness: float, lwheel: bool = False, rwheel: bool = False):
-    with BuildPart() as arm_plate:
+def build_wheel_arm(length: float, thickness: float, axle_radius: float):
+    with BuildPart() as arm:
         b = Box(length, wheel_radius * 2, thickness)
-        if lwheel:
-            f = edges(Select.LAST).sort_by(Axis.X)[0]
-            # show(f)
-            fillet(f, wheel_radius)
-            with Locations(Location((-length/2+wheel_radius, 0, 0))):
-                with PolarLocations(wheel_mount_hole_rad_from_center, 4):
-                    Hole(servo_wheel_hole_radius, thickness)
-                
-        if rwheel:
-            f = edges(Select.ALL).sort_by(Axis.X)[-2]
-            f2 = edges(Select.ALL).sort_by(Axis.X)[-4]
-            fillet([f, f2], wheel_radius)
-            # f = edges(Select.LAST).sort_by(Axis.X)[-1]
-            # fillet(f2, wheel_radius)
-            # show(f)
-            # fillet(f, wheel_radius)
-            with Locations(Location((length/2-wheel_radius, 0, 0))):
-                with PolarLocations(wheel_mount_hole_rad_from_center, 4):
-                    Hole(servo_wheel_hole_radius, thickness)
+        f = [edges(Select.ALL).sort_by(Axis.X)[-2], edges(Select.ALL).sort_by(Axis.X)[-4]]
+        fillet(f, wheel_radius - .001)
+        with Locations(Location((length/2-wheel_radius, 0, 0))):
+            Hole(axle_radius, thickness)
+            with PolarLocations(wheel_mount_hole_rad_from_center, 4) as locs:
+                Hole(servo_wheel_hole_radius, thickness)
+                for i,l in enumerate(locs):
+                    RigidJoint(label=f'left_wheel_mount_{i}', to_part=arm, joint_location=l)
+        joinf = faces(Select.ALL).sort_by(Axis.X)[0]
+        RigidJoint(label='join', joint_location=joinf.location)
+    return arm
 
-    return arm_plate
-       
+def build_motor_mount_arm(length: float, thickness: float, mount_sy: float, mount_sz: float):
+    with BuildPart() as arm:
+        b = Box(length, wheel_radius * 2, thickness)
+        with Locations(Location((length/2-wheel_radius, 0, 0))):
+            RigidJoint(label=f'left_wheel_mount_{i}', to_part=arm, joint_location=l)
+        joinf = faces(Select.ALL).sort_by(Axis.X)[0]
+        RigidJoint(label='join', joint_location=joinf.location)
 
 
 def build_bicep(
@@ -292,33 +289,27 @@ def build_bicep(
             bicep.joints[l] = j
         guidef = faces(Select.LAST).sort_by(Axis.X)[0]
         motorf = faces(Select.LAST).sort_by(Axis.X)[-1]
-        l = build_plate(length, thickness, rwheel = True)
+        botz = faces(Select.LAST).sort_by(Axis.Z)[0].location.position.Z
         carriage_sy = guidef.faces()[0].width / 2
+        motor_arm = build_wheel_arm(length, thickness, motor_axle_mount_radius)
+        guide_arm = build_wheel_arm(length, thickness, guide_axle_mount_radius)
         yoff = length / 2 - carriage_sy
-        with BuildPart(guidef):
-            # with Locations(Location((0, 0, thickness / 2), (0, 0, 90))):
-            with Locations(Location((0, yoff, thickness / 2), (0, 0, 90))):
-                add(l)
+        arm_mid = -motorf.center().Y / 2 + length / 2
         with BuildPart(motorf):
-            with Locations(Location((0, -yoff, thickness / 2), (0, 0, -90))):
-                add(l)
-
-
-        # arm = build_plate(length, thickness)
-        # add(arm)
-    # l,r = split(arm, Plane.XY)
-    # arml = build_plate(length, thickness, 0)
-    # armr = build_plate(length, thickness, 0)
-        
+            x = -(motorf.center().Z - botz)+wheel_radius
+            y = -length / 2 + motorf.bounding_box().size.Y / 2
+            with Locations(Location((x, y, thickness / 2), Vector(Z=-90))) as loc:
+                add(motor_arm)
+        with BuildPart(guidef):
+            x = -(guidef.center().Z - botz)+wheel_radius
+            y = length / 2 - guidef.bounding_box().size.Y / 2
+            with Locations(Location((x, y, thickness / 2), Vector(Z=90))):
+                add(guide_arm)
+        for i, h in enumerate(faces(Select.ALL).filter_by(GeomType.CYLINDER).sort_by(Axis.Y)[-4:-1]):
+            RigidJoint(label=f'guide_wheel_mount_{i}', to_part=bicep, joint_location=h.location)
             
-
-
-
     return bicep
     
-
-
-
 def connect_arm_to_servo_wheel(arm: Compound, servo: Compound):
     print("connecting", arm.label, "wheel to", servo.label)
     aj = joint_dict(arm)
