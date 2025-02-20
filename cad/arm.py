@@ -300,6 +300,10 @@ def build_bicep(
             y = -length / 2 + motorf.bounding_box().size.Y / 2
             with Locations(Location((x, y, thickness / 2), Vector(Z=-90))) as loc:
                 add(motor_arm)
+            with Locations(faces(Select.ALL).filter_by(GeomType.CYLINDER).sort_by(Axis.X)[0].location):
+                Box(10, 10, 10)
+                Hole(carriage_mount_hole_rad, thickness)
+
         with BuildPart(guidef):
             x = -(guidef.center().Z - botz)+wheel_radius
             y = length / 2 - guidef.bounding_box().size.Y / 2
