@@ -277,10 +277,13 @@ def build_bicep(
             bicep.joints[l] = j
         guidef = faces(Select.LAST).sort_by(Axis.X)[0]
         motorf = faces(Select.LAST).sort_by(Axis.X)[-1]
+        topz = faces(Select.LAST).sort_by(Axis.Z)[-1].location.position.Z
         botz = faces(Select.LAST).sort_by(Axis.Z)[0].location.position.Z
+        carriage_sz = topz - botz
         motor_arm = build_wheel_arm(length, thickness, motor_axle_mount_radius)
         guide_arm = build_wheel_arm(length, thickness, guide_axle_mount_radius)
         carriage_sx = motorf.center().X - guidef.center().X
+        carriage_sy = motorf.width
         with BuildPart(motorf):
             x = -(motorf.center().Z - botz)+arm_width
             y = -length / 2 + motorf.bounding_box().size.Y / 2
@@ -298,11 +301,11 @@ def build_bicep(
             with Locations(Location((0, 0, -thickness * 1.5))):
                 Hole(carriage_mount_hole_head_rad, thickness / 2)
         cross_barf = faces(Select.ALL).filter_by(Axis.Y).sort_by(Axis.Y)[-3]
-        with BuildPart(cross_barf):
-            with Locations(Location((-cross_barf.length / 2 + arm_width, 0, (length - motorf.width - wheel_radius * 2)/3))):
-                r = Box(arm_width * 2, cross_barf.width, thickness)
-            with Locations(Location((-cross_barf.length / 2 + arm_width, 0, (length - motorf.width - wheel_radius * 2)* 2/3))):
-                r = Box(arm_width * 2, cross_barf.width, thickness)
+        with BuildPart():
+            with Locations(Location((0, length - carriage_sy / 2 - wheel_radius * 2 - 8, -carriage_sz + arm_width))):
+                r = Box(cross_barf.width, thickness, arm_width * 2)
+            with Locations(Location((0, (length - wheel_radius * 2 - 5)/2, -carriage_sz + arm_width))):
+                r = Box(cross_barf.width, thickness, arm_width * 2)
 
         motor_arm_mount_holesf = faces(Select.ALL).filter_by(GeomType.CYLINDER).sort_by(Axis.X).sort_by(Axis.Y)[8:22]
         motor_arm_mount_holesf = motor_arm_mount_holesf.sort_by(Axis.X)[7:]
@@ -465,5 +468,5 @@ def neutral_arm():
     
 
 arm = articulated_arm()
-# arm  = build_forearm()
+# arm  = build_bicep()
 show(arm, render_joints=True)
