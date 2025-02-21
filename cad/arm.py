@@ -20,13 +20,12 @@ UNIT_VEC = Vector(1, 1, 1)
 
 # servo_mount_screw = fastener.ButtonHeadScrew(size='M1.6-0.35', length=3 * MM)
 m3 = fastener.ButtonHeadScrew(size="M3-0.5", length=3)
-print(m3.thread_diameter, m3.thread_pitch)
 
 importer = Mesher()
 servo_wheel_hole_radius = m3.thread_diameter / 2 * 1.05
 servo_mount_hole_radius = .8
 guide_axle_mount_radius = 3.02 * 1.05
-motor_axle_mount_radius = 1.6 * 1.05
+motor_axle_mount_radius = m3.head_diameter / 2 * 1.05
 wheel_radius = 9.0
 carriage_mount_hole_rad = .8
 carriage_mount_hole_head_rad = 1.4
@@ -93,7 +92,6 @@ def get_descendant(compound: Compound, label: str):
         if isinstance(desc, Shape) and desc.label == label:
             return desc
     print(f"ERROR: no ancestor {label} in {compound.label}")
-    print(compound.show_topology())
 
 
 def build_servo():
@@ -280,9 +278,9 @@ def build_bicep(
         guidef = faces(Select.LAST).sort_by(Axis.X)[0]
         motorf = faces(Select.LAST).sort_by(Axis.X)[-1]
         botz = faces(Select.LAST).sort_by(Axis.Z)[0].location.position.Z
-        carriage_sy = guidef.faces()[0].width / 2
         motor_arm = build_wheel_arm(length, thickness, motor_axle_mount_radius)
         guide_arm = build_wheel_arm(length, thickness, guide_axle_mount_radius)
+        carriage_sx = motorf.center().X - guidef.center().X
         with BuildPart(motorf):
             x = -(motorf.center().Z - botz)+arm_width
             y = -length / 2 + motorf.bounding_box().size.Y / 2
@@ -301,10 +299,11 @@ def build_bicep(
                 Hole(carriage_mount_hole_head_rad, thickness / 2)
         cross_barf = faces(Select.ALL).filter_by(Axis.Y).sort_by(Axis.Y)[-3]
         with BuildPart(cross_barf):
-            with Locations(Location((-cross_barf.length / 2 + arm_width, 0, (length - motorf.width)/2))):
+            with Locations(Location((-cross_barf.length / 2 + arm_width, 0, (length - motorf.width - wheel_radius * 2)/3))):
                 r = Box(arm_width * 2, cross_barf.width, thickness)
-                # with BuildPart(motor_armf):
-            # return 
+            with Locations(Location((-cross_barf.length / 2 + arm_width, 0, (length - motorf.width - wheel_radius * 2)* 2/3))):
+                r = Box(arm_width * 2, cross_barf.width, thickness)
+
         motor_arm_mount_holesf = faces(Select.ALL).filter_by(GeomType.CYLINDER).sort_by(Axis.X).sort_by(Axis.Y)[8:22]
         motor_arm_mount_holesf = motor_arm_mount_holesf.sort_by(Axis.X)[7:]
         motor_arm_mount_holesf = motor_arm_mount_holesf.sort_by(SortBy.RADIUS)[:4]
@@ -333,7 +332,7 @@ def build_forearm(
     cj_guide_top = RigidJoint('carriage_guide_side_to_arm_mount_top', carriage.part, Location((carriage_guidef.center().X, carriage_motorf.center().Y, carriage_topz), (0, 90, 0)))
     carriage_sz = carriage_topz - carriage_botz
     carriage_sx = carriage_motorf.center().X - carriage_guidef.center().X
-    carriage_sy = carriage_motorf.length
+    carriage_sy = carriage_motorf.width
     
     with BuildPart() as motor_arm:
         with Locations(Location((-length / 4, 0, 0), (0, 0, 180))):
@@ -341,8 +340,9 @@ def build_forearm(
             add(front)
         with Locations(Location((length / 4, 0, 0))):
             Box(length/2, arm_width * 2, thickness)
-    mj_bot = RigidJoint('motor_arm_carriage_side_bot_mount', motor_arm.part, Location((length / 2, 0, -thickness / 2), (0, 0, 180)))
-    mj_top = RigidJoint('motor_arm_carriage_side_top_mount', motor_arm.part, Location((length / 2 - carriage_sz, 0, -thickness / 2), (0, 0, 180)))
+    yoff = (carriage_sy - arm_width * 2)/2
+    mj_bot = RigidJoint('motor_arm_carriage_side_bot_mount', motor_arm.part, Location((length / 2, yoff, -thickness / 2), (0, 0, 180)))
+    mj_top = RigidJoint('motor_arm_carriage_side_top_mount', motor_arm.part, Location((length / 2 - carriage_sz, yoff, -thickness / 2), (0, 0, 180)))
 
     with BuildPart() as guide_arm:
         with Locations(Location((-length / 4, 0, 0), (0, 0, 180))):
@@ -350,22 +350,24 @@ def build_forearm(
             add(front)
         with Locations(Location((length / 4, 0, 0))):
             Box(length/2, arm_width * 2, thickness)
-    gj_bot = RigidJoint('guide_arm_carriage_side_bot_mount', guide_arm.part, Location((length / 2, 0, thickness / 2), (0, 0, 180)))
-    gj_top = RigidJoint('guide_arm_carriage_side_top_mount', guide_arm.part, Location((length / 2 - carriage_sz, 0, thickness / 2), (0, 0, 180)))
+    gj_bot = RigidJoint('guide_arm_carriage_side_bot_mount', guide_arm.part, Location((length / 2, yoff, thickness / 2), (0, 0, 180)))
+    gj_top = RigidJoint('guide_arm_carriage_side_top_mount', guide_arm.part, Location((length / 2 - carriage_sz, yoff, thickness / 2), (0, 0, 180)))
     
     cj_mot_top.connect_to(mj_bot)
     cj_mot_bot.connect_to(mj_top)
     cj_guide_bot.connect_to(gj_top)
     cj_guide_top.connect_to(gj_bot)
     part = carriage.part + motor_arm.part + guide_arm.part
-    with BuildPart(carriage_motorf) as p:
-        with Locations(Location((0, 0, thickness/2))):
-            extrude(carriage_motorf, amount=thickness)
+    with BuildPart() as p:
+        with Locations(Location((-carriage_sy/2 - thickness * 2 + 0.06, 0, carriage_botz + carriage_sz /2))):
+            Box(thickness, carriage_guidef.width, carriage_sz)
     part += p.part
-    with BuildPart(carriage_guidef) as p:
-        with Locations(Location((0, 0, thickness/2))):
-            extrude(carriage_guidef, amount=thickness)
+    print(carriage_guidef.length, carriage_guidef.width, carriage_guidef.height)
+    with BuildPart() as p:
+        with Locations(Location((carriage_sy/2 + thickness * 2 - 0.06, 0, carriage_botz + carriage_sz /2))):
+            Box(thickness, carriage_guidef.width, carriage_sz)
     part += p.part
+    show(part)
     
     jls = [part.joints[k].location for k in part.joints if k.startswith('motor_mount_') or k.startswith('guide_mount_')]
     with BuildPart() as p:
@@ -375,15 +377,41 @@ def build_forearm(
                 Cylinder(carriage_mount_hole_rad, thickness * 2)
     part -= p.part
 
-    arm_mount_holesf = part.faces().filter_by(GeomType.CYLINDER).sort_by(Axis.X).sort_by(Axis.Y)[5:19]
+    cross_barf = part.faces().filter_by(Axis.Y).sort_by(Axis.Y)[-4]
+    with BuildPart(cross_barf):
+        with Locations(Location((-cross_barf.length / 2 + arm_width, 0, (length - carriage_motorf.width - wheel_radius)/2))):
+            r = Box(arm_width * 2, cross_barf.width, thickness)
+    
+    # (hack) chop off 10 more
+    with Locations(Location((0, 0, length / 2))):
+        part -= Box(carriage_sx + thickness * 4, carriage_sy, 10)
+
+
+    with BuildPart() as p:
+        with Locations(Location((0, yoff, -(length - 21.95 - 5) / 2 - 15))):
+            Box(carriage_sx, arm_width * 2, thickness)
+    part += p.part
+
+    # (hack cross bars) the 10 here is guess at the portion of the carriage on the positive side of the z plane 
+    #  21.95 is the size of the bar end (or wheels radius) to the front of the servo
+    with BuildPart() as p:
+        with Locations(Location((0, yoff, -(length - 21.95 - 5)))):
+            Box(carriage_sx, arm_width * 2, thickness)
+    part += p.part
+
+    arm_mount_holesf = part.faces().filter_by(GeomType.CYLINDER).sort_by(Axis.Z)[0:14]
     motor_arm_mount_holesf = arm_mount_holesf.sort_by(Axis.X)[7:]
-    motor_arm_mount_holesf = motor_arm_mount_holesf.sort_by(SortBy.RADIUS)[:4]
-    for i, f in enumerate(motor_arm_mount_holesf.faces()):
-        RigidJoint(f'motor_wheel_mount_{i}', part, Location(f.bounding_box().center() + (-thickness / 2, 0, 0), (0, -90, 0)))
+    motor_arm_mount_holesf = motor_arm_mount_holesf.sort_by(SortBy.RADIUS)[4]
+    with Locations(Location(motor_arm_mount_holesf.center() + (-thickness/2, 0, motor_axle_mount_radius), (0, -90, 0))):
+        with PolarLocations(wheel_mount_hole_rad_from_center, 4) as locs:
+            for i, l in enumerate(locs.locations):
+                RigidJoint(f'motor_wheel_mount_{i}', part, l)
     guide_arm_mount_holesf = arm_mount_holesf.sort_by(Axis.X)[:7]
-    guide_arm_mount_holesf = guide_arm_mount_holesf.sort_by(SortBy.RADIUS)[:4]
-    for i, f in enumerate(guide_arm_mount_holesf.faces()):
-        RigidJoint(f'guide_wheel_mount_{i}', part, Location(f.bounding_box().center() + (thickness / 2, 0, 0), (0, 90, 0)))
+    guide_arm_mount_holesf = guide_arm_mount_holesf.sort_by(SortBy.RADIUS)[4]
+    with Locations(Location(guide_arm_mount_holesf.center() + (thickness/2, 0, guide_axle_mount_radius), (0, 90, 0))):
+        with PolarLocations(wheel_mount_hole_rad_from_center, 4) as locs:
+            for i, l in enumerate(locs.locations):
+                RigidJoint(f'guide_wheel_mount_{i}', part, l)
 
     return part
 
@@ -426,11 +454,11 @@ def build_full_arm():
     connect_wheels_to_housing(servos[0], 180)
     connect_arm_to_servo_wheel(bicep, servos[0])
     connect_servo_to_arm_mount(bicep, servos[1])
-    connect_wheels_to_housing(servos[1], angle=90)
+    connect_wheels_to_housing(servos[1], angle=270)
     connect_arm_to_servo_wheel(forearm, servos[1])
     connect_servo_to_arm_mount(forearm, servos[2])
     connect_wheels_to_housing(servos[2], 0)
-    # export_step(forearm, "forearm.step")
+    export_step(forearm, "forearm.step")
     return Compound(label="arm", children=[bicep, forearm] + servos)
 
 
@@ -445,6 +473,7 @@ def build_full_arm():
 # connect_servo_to_arm_mount(limb, servo)
 # connect_wheels_to_housing(servo)
 arm = build_full_arm()
+# arm  = build_forearm()
 show(arm, render_joints=True)
 # export_step(build_limb().part, "limb.step")
 # show(build_test_arm(), render_joints=True)
