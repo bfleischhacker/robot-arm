@@ -362,12 +362,10 @@ def build_forearm(
         with Locations(Location((-carriage_sy/2 - thickness * 2 + 0.06, 0, carriage_botz + carriage_sz /2))):
             Box(thickness, carriage_guidef.width, carriage_sz)
     part += p.part
-    print(carriage_guidef.length, carriage_guidef.width, carriage_guidef.height)
     with BuildPart() as p:
         with Locations(Location((carriage_sy/2 + thickness * 2 - 0.06, 0, carriage_botz + carriage_sz /2))):
             Box(thickness, carriage_guidef.width, carriage_sz)
     part += p.part
-    show(part)
     
     jls = [part.joints[k].location for k in part.joints if k.startswith('motor_mount_') or k.startswith('guide_mount_')]
     with BuildPart() as p:
@@ -415,7 +413,6 @@ def build_forearm(
 
     return part
 
-
 def connect_arm_to_servo_wheel(arm: Compound, servo: Compound):
     print("connecting", arm.label, "wheel to", servo.label)
     aj = joint_dict(arm)
@@ -440,7 +437,7 @@ def connect_wheels_to_housing(servo: Compound, angle: float):
     j["housing.drive_axle"].connect_to(j["drive_wheel.axle"], angle=angle)
 
 
-def build_full_arm():
+def build_full_arm(bicep_phi: float, forearm_phi: float):
     servos = [build_servo()]
     servos[0].label = "servo_0"
     for i in range(1, 3):
@@ -451,31 +448,22 @@ def build_full_arm():
     forearm = build_forearm(150, 2.5, 1.01)
     forearm.label = "forearm"
     servos[0].rotate(Axis.Y, -90)
-    connect_wheels_to_housing(servos[0], 180)
+    connect_wheels_to_housing(servos[0], bicep_phi)
     connect_arm_to_servo_wheel(bicep, servos[0])
     connect_servo_to_arm_mount(bicep, servos[1])
-    connect_wheels_to_housing(servos[1], angle=270)
+    connect_wheels_to_housing(servos[1], angle=forearm_phi)
     connect_arm_to_servo_wheel(forearm, servos[1])
     connect_servo_to_arm_mount(forearm, servos[2])
     connect_wheels_to_housing(servos[2], 0)
-    export_step(forearm, "forearm.step")
     return Compound(label="arm", children=[bicep, forearm] + servos)
 
+def articulated_arm():
+    return build_full_arm(45, 0)
 
-# arm = build_full_arm()
-# show(build_servo(), render_joints=True)
-# show(build_full_arm(), render_joints=True)
-# servo = build_servo()
-# carriage = build_carriage(1.01, 2.0)
-# limb = build_bicep().part
-# limb.joints['motor_mount_se'].connect_to(get_descendant(servo, 'housing').joints['motor_mount_se'])
-# limb.joints['motor_mount_sw'].connect_to(get_descendant(servo, 'housing').joints['motor_mount_sw'])
-# connect_servo_to_arm_mount(limb, servo)
-# connect_wheels_to_housing(servo)
-arm = build_full_arm()
+def neutral_arm():
+    return build_full_arm(180, 0)
+    
+
+arm = articulated_arm()
 # arm  = build_forearm()
 show(arm, render_joints=True)
-# export_step(build_limb().part, "limb.step")
-# show(build_test_arm(), render_joints=True)
-# export_step(build_carriage(1.01, 2).part, 'carriage_test.step')
-# export_step(limb, 'limb.step')
