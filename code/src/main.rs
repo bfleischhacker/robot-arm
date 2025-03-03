@@ -125,9 +125,11 @@ impl CommStatus {
 //     let manager = Manager::new(client, servo_ids);
 // }
 
-
+use std::fmt::{Display, Formatter};
 use serialport::*;
 use std::io::{Read, Write};
+use std::mem::forget;
+use std::thread::sleep;
 use std::time::Duration;
 
 const HEADER: [u8; 2] = [0xFF, 0xFF];
@@ -149,7 +151,7 @@ struct Response {
 impl ServoController {
     fn new(port_name: &str, baud_rate: u32) -> Self {
         let port = serialport::new(port_name, baud_rate)
-            .timeout(Duration::from_millis(100))
+            .timeout(Duration::from_millis(1000))
             .data_bits(DataBits::Eight)
             .stop_bits(StopBits::One)
             .flow_control(FlowControl::None)
@@ -167,7 +169,6 @@ impl ServoController {
 
     fn send_packet(&mut self, id: u8, instruction: u8, params: &[u8]) -> Result<()> {
         let mut packet = vec!(HEADER[0], HEADER[1], id, params.len() as u8 + 2, instruction);
-        println!("{}", packet.len());
         packet.extend_from_slice(params);
         if packet.len() > 250 {
             return Err(Error::new(ErrorKind::Unknown, "Packet too long"));
@@ -177,7 +178,6 @@ impl ServoController {
         self.port.clear(ClearBuffer::All)?;
         self.port.write_all(&packet)?;
         println!("tx {:?}", &packet);
-        println!("tx bytes {} {}", self.port.bytes_to_read()?, self.port.bytes_to_write()?);
         self.port.flush()?;
         Ok(())
     }
@@ -186,8 +186,9 @@ impl ServoController {
     fn read_response(&mut self, id: u8, expected_params_len: usize) -> Result<Response> {
         // header{2}, id{1}, length{1}, error{1}, ..., checksum{1}
         let mut buffer = Vec::<u8>::with_capacity(expected_params_len + 4 + 1);
-        // println!("tx bytes {} {}", self.port.bytes_to_read()?, self.port.bytes_to_write()?);
+        buffer.resize(expected_params_len + 6, 0);
         self.port.read_exact(&mut buffer)?;
+        println!("rx {:?}", buffer);
         if buffer[2] != id {
             return Err(Error::new(ErrorKind::Unknown, "Invalid ID"))
         }
@@ -196,15 +197,14 @@ impl ServoController {
         if actual_checksum != expected_checksum {
             return Err(Error::new(ErrorKind::Unknown, "Checksum error"));
         }
-        println!("rx {:?}", buffer);
         Ok(Response {
             id: buffer[2],
-            status: CommStatus::from_code(buffer[3] as i8),
-            data: buffer[4..buffer.len() - 1].to_vec(),
+            status: CommStatus::from_code(buffer[4] as i8),
+            data: buffer[5..buffer.len() - 1].to_vec(),
         })
     }
 
-    fn ping(&mut self, id: u8) -> Result<bool> {
+    fn ping(&mut self, id: u8) -> Result<()> {
         if id == BROADCAST_ID {
             return Err(Error::new(ErrorKind::Unknown, "Broadcast ID not supported"));
         }
@@ -213,11 +213,10 @@ impl ServoController {
         }
         self.send_packet(id, PING_CMD, &[])?;
         let resp = self.read_response(id, 0)?;
-
-        // self.read_data(1, 0x38, 2);
-
-        // Ok(response.len() > 0 && response[2] == id)
-        Ok(true)
+        if resp.status != CommStatus::Success {
+            return Err(Error::new(ErrorKind::Unknown, format!("Ping failed: {:?}", resp.status)));
+        }
+        Ok(())
     }
 
     // fn read_data(&mut self, id: u8, address: u8, length: u8) -> Result<Vec<u8>> {
@@ -243,12 +242,9 @@ impl ServoController {
 }
 
 fn main() {
-    let port_name = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_58FA095208-if00";
-    // let port_name = "/dev/ttyACM0";
+    let port_name = "/dev/tty.usbmodem58FA0952081";
     let mut servo = ServoController::new(port_name, 1_000_000);
-    // servo.reset();
-    // println!("{:?}", servo.read_response());
-    servo.ping(1).unwrap();
+    println!("{:?}", servo.ping(1).unwrap());
 
     // println!(
     //     "Connected to servo controller at {} baud",
